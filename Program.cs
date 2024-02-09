@@ -5,7 +5,7 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddNpgsqlDataSource(
-    "Host=db;Username=admin;Password=123;Database=rinha;Max Auto Prepare=200;Minimum Pool Size=10;MaxPoolSize=100",
+    "Host=db;Username=admin;Password=123;Database=rinha;Max Auto Prepare=100;Minimum Pool Size=10;MaxPoolSize=100",
     dataSourceBuilderAction: a => { a.UseLoggerFactory(NullLoggerFactory.Instance); });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -17,7 +17,7 @@ app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] T
     if (id is (< 1 or > 5))
         return Results.NotFound(new { error = "Id not found" });
 
-    if (request.Descricao.Length == 0 || request.Descricao.Length > 10)
+    if (string.IsNullOrEmpty(request.Descricao) || request.Descricao.Length > 10)
         return Results.UnprocessableEntity(new { descricaoInvalida = request.Descricao });
 
     if (request.Tipo != 'c' && request.Tipo != 'd')
@@ -43,13 +43,22 @@ app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] T
 
     var result = new TransactionResult(0, 0);
 
-    var cmd = new NpgsqlCommand($"INSERT INTO transaction (value, type, description, customer_id) VALUES ({request.Valor}, '{request.Tipo}', '{request.Descricao}', {id})", conn);
-    cmd.ExecuteNonQuery();
+    //var cmd = new NpgsqlCommand($"INSERT INTO transaction (value, type, description, customer_id) VALUES ({request.Valor}, '{request.Tipo}', '{request.Descricao}', {id})", conn);
+
+    var cmd = new NpgsqlCommand("INSERT INTO transaction (value, type, description, customer_id) VALUES (@valor, @tipo, @descricao, @id)", conn);
+    cmd.Parameters.AddWithValue("@valor", request.Valor);
+    cmd.Parameters.AddWithValue("@tipo", request.Tipo);
+    cmd.Parameters.AddWithValue("@descricao", request.Descricao);
+    cmd.Parameters.AddWithValue("@id", id);
+
+    await cmd.PrepareAsync();
+    await cmd.ExecuteNonQueryAsync();
 
     if (request.Tipo == 'c')
     {
         cmd = new NpgsqlCommand($"UPDATE customer SET balance = balance + {request.Valor} WHERE id = {id} RETURNING \"limit\", balance", conn);
 
+        await cmd.PrepareAsync();
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -63,6 +72,7 @@ app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] T
         var transaction = await conn.BeginTransactionAsync();
         cmd = new NpgsqlCommand($"UPDATE customer SET balance = balance - {request.Valor} WHERE id = {id} RETURNING \"limit\", balance", conn, transaction);
 
+        await cmd.PrepareAsync();
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -100,22 +110,21 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
         }
         catch (NpgsqlException)
         {
-            Console.WriteLine("Trying to reconnect.");
             await Task.Delay(1_000);
         }
     }
 
     try
     {
-
         var cmd = new NpgsqlCommand($"SELECT \"limit\" as limite, balance as saldo FROM customer WHERE id = {id}", conn);
         BalanceStatementResult? saldo = null;
 
+        await cmd.PrepareAsync();
         using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
             {
-                saldo = new BalanceStatementResult(reader.GetInt32(0), reader.GetInt32(1));
+                saldo = new BalanceStatementResult(reader.GetInt32(0), reader.GetInt32(1), DateTime.Now);
             }
             await reader.CloseAsync();
             await reader.DisposeAsync();
@@ -124,6 +133,7 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
 
         var latestTransactions = new List<TransactionStatementResult>();
 
+        await cmd.PrepareAsync();
         using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
@@ -148,7 +158,6 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
         {
             return Results.NotFound();
         }
-
     }
 
     await conn.DisposeAsync();
@@ -159,5 +168,5 @@ app.Run();
 
 public record TransactionRequest(int Valor, char Tipo, string Descricao);
 public record TransactionResult(int Limit, int Balance);
-public record BalanceStatementResult(int Limite, int Saldo);
-public record TransactionStatementResult(int Valor, char Tipo, string Descricao, DateTime Realizada_Em);
+public record BalanceStatementResult(int Limite, int Total, DateTime Data_Extrato);
+public record TransactionStatementResult(int Valor, char Tipo, string Descricao, DateTime Realizada_Em); // alterado
