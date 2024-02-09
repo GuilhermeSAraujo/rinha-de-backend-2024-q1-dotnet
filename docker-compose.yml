@@ -15,8 +15,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.4'
-          memory: '200m'
+          cpus: '0.5'
+          memory: '200MB'
   api01:
     container_name: rinha-api01
     build: 
@@ -28,8 +28,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '50m'
+          cpus: '0.25'
+          memory: '87MB'
   api02:
     container_name: rinha-api02
     build: 
@@ -41,8 +41,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '50m'
+          cpus: '0.25'
+          memory: '87MB'
   nginx:
     image: nginx:latest
     volumes:
@@ -55,8 +55,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: '200m'
+          cpus: '0.5'
+          memory: '175MB'
 networks:
   default:
     driver: bridge
