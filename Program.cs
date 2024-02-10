@@ -1,30 +1,33 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
+using rinha_de_backend_2024_q1_dotnet.Types;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateSlimBuilder(args);
 
 builder.Services.AddNpgsqlDataSource(
-    "Host=db;Username=admin;Password=123;Database=rinha;Max Auto Prepare=100;Minimum Pool Size=10;MaxPoolSize=100",
+    //"Host=localhost;Username=admin;Password=123;Database=rinha;Pooling=true;Minimum Pool Size=50;Maximum Pool Size=2000;Multiplexing=true;Timeout=15;Command Timeout=15;Cancellation Timeout=-1;No Reset On Close=true;Max Auto Prepare=20;Auto Prepare Min Usages=1",
+    "Host=db;Username=admin;Password=123;Database=rinha;Pooling=true;Minimum Pool Size=50;Maximum Pool Size=2000;Multiplexing=true;Timeout=15;Command Timeout=15;Cancellation Timeout=-1;No Reset On Close=true;Max Auto Prepare=20;Auto Prepare Min Usages=1",
     dataSourceBuilderAction: a => { a.UseLoggerFactory(NullLoggerFactory.Instance); });
 
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
-app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] TransactionRequest request, NpgsqlConnection conn) =>
+app.MapPost("/clientes/{id}/transacoes", async Task<Results<Ok<PostTransactionResult>, NotFound, UnprocessableEntity>> ([FromRoute] int id, [FromBody] TransactionRequest request, NpgsqlConnection conn) =>
 {
     if (id is (< 1 or > 5))
-        return Results.NotFound(new { error = "Id not found" });
+        return TypedResults.NotFound();
 
     if (string.IsNullOrEmpty(request.Descricao) || request.Descricao.Length > 10)
-        return Results.UnprocessableEntity(new { descricaoInvalida = request.Descricao });
+        return TypedResults.UnprocessableEntity();
 
     if (request.Tipo != 'c' && request.Tipo != 'd')
-        return Results.UnprocessableEntity(new { tipoInvalido = request.Tipo });
+        return TypedResults.UnprocessableEntity();
 
     if (request.Valor <= 0)
-        return Results.UnprocessableEntity(new { valor = request.Valor });
+        return TypedResults.UnprocessableEntity();
 
     bool connected = false;
     while (!connected)
@@ -43,22 +46,10 @@ app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] T
 
     var result = new TransactionResult(0, 0);
 
-    //var cmd = new NpgsqlCommand($"INSERT INTO transaction (value, type, description, customer_id) VALUES ({request.Valor}, '{request.Tipo}', '{request.Descricao}', {id})", conn);
-
-    var cmd = new NpgsqlCommand("INSERT INTO transaction (value, type, description, customer_id) VALUES (@valor, @tipo, @descricao, @id)", conn);
-    cmd.Parameters.AddWithValue("@valor", request.Valor);
-    cmd.Parameters.AddWithValue("@tipo", request.Tipo);
-    cmd.Parameters.AddWithValue("@descricao", request.Descricao);
-    cmd.Parameters.AddWithValue("@id", id);
-
-    await cmd.PrepareAsync();
-    await cmd.ExecuteNonQueryAsync();
-
     if (request.Tipo == 'c')
     {
-        cmd = new NpgsqlCommand($"UPDATE customer SET balance = balance + {request.Valor} WHERE id = {id} RETURNING \"limit\", balance", conn);
+        var cmd = new NpgsqlCommand($"INSERT INTO transaction (value, type, description, customer_id) VALUES ({request.Valor}, '{request.Tipo}', '{request.Descricao}', {id}); UPDATE customer SET balance = balance + {request.Valor} WHERE id = {id} RETURNING \"limit\", balance", conn);
 
-        await cmd.PrepareAsync();
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -66,34 +57,37 @@ app.MapPost("/clientes/{id}/transacoes", async ([FromRoute] int id, [FromBody] T
         }
         await reader.CloseAsync();
         await reader.DisposeAsync();
+        return TypedResults.Ok(new PostTransactionResult(result.Limit, result.Balance));
     }
-    else if (request.Tipo == 'd')
+    else
     {
-        var transaction = await conn.BeginTransactionAsync();
-        cmd = new NpgsqlCommand($"UPDATE customer SET balance = balance - {request.Valor} WHERE id = {id} RETURNING \"limit\", balance", conn, transaction);
-
-        await cmd.PrepareAsync();
-        using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        var cmd = new NpgsqlCommand($"UPDATE customer SET balance = balance - {request.Valor} WHERE id = {id} AND balance >= {request.Valor} RETURNING \"limit\", balance", conn);
+        var reader = await cmd.ExecuteReaderAsync();
+        if (reader.HasRows)
         {
-            result = new TransactionResult(reader.GetInt32(0), reader.GetInt32(1));
-        }
-        await reader.CloseAsync();
-        await reader.DisposeAsync();
+            while (await reader.ReadAsync())
+            {
+                result = new TransactionResult(reader.GetInt32(0), reader.GetInt32(1));
+            }
 
-        if (result.Balance < 0)
-        {
-            transaction.Rollback();
-            await conn.DisposeAsync();
-            return Results.UnprocessableEntity();
+            await reader.CloseAsync();
+            await reader.DisposeAsync();
+
+            // The balance was successfully updated, so we can insert the transaction.
+            cmd = new NpgsqlCommand($"INSERT INTO transaction (value, type, description, customer_id) VALUES ({request.Valor}, '{request.Tipo}', '{request.Descricao}', {id})", conn);
+            await cmd.ExecuteNonQueryAsync();
+
+            return TypedResults.Ok(new PostTransactionResult(result.Limit, result.Balance));
         }
-        transaction.Commit();
+        else
+        {
+            await reader.CloseAsync();
+            await reader.DisposeAsync();
+            return TypedResults.UnprocessableEntity();
+        }
     }
-
-    await conn.DisposeAsync();
-
-    return Results.Ok(new { limite = result.Limit, saldo = result.Balance });
 });
+
 
 app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection conn) =>
 {
@@ -119,7 +113,6 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
         var cmd = new NpgsqlCommand($"SELECT \"limit\" as limite, balance as saldo FROM customer WHERE id = {id}", conn);
         BalanceStatementResult? saldo = null;
 
-        await cmd.PrepareAsync();
         using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
@@ -133,7 +126,6 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
 
         var latestTransactions = new List<TransactionStatementResult>();
 
-        await cmd.PrepareAsync();
         using (var reader = await cmd.ExecuteReaderAsync())
         {
             while (await reader.ReadAsync())
@@ -146,7 +138,7 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
         }
 
         await conn.DisposeAsync();
-        return Results.Ok(new
+        return TypedResults.Ok(new
         {
             saldo,
             ultimas_transacoes = latestTransactions
@@ -156,17 +148,13 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, NpgsqlConnection
     {
         if (e.SqlState == "23503")
         {
-            return Results.NotFound();
+            return TypedResults.NotFound();
         }
     }
 
     await conn.DisposeAsync();
-    return Results.Problem();
+    return TypedResults.Problem();
 });
 
-app.Run();
 
-public record TransactionRequest(int Valor, char Tipo, string Descricao);
-public record TransactionResult(int Limit, int Balance);
-public record BalanceStatementResult(int Limite, int Total, DateTime Data_Extrato);
-public record TransactionStatementResult(int Valor, char Tipo, string Descricao, DateTime Realizada_Em); // alterado
+app.Run();

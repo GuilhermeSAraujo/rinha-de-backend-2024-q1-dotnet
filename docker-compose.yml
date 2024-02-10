@@ -3,7 +3,7 @@ services:
   db:
     image: postgres:latest
     hostname: db
-    command: 'postgres -c shared_buffers=256MB -c fsync=off -c full_page_writes=off -c max_connections=450'
+    command: 'postgres -c shared_buffers=256MB -c fsync=off -c full_page_writes=off -c max_connections=1000'
     environment:
       - POSTGRES_PASSWORD=123
       - POSTGRES_USER=admin
@@ -16,7 +16,7 @@ services:
       resources:
         limits:
           cpus: '0.8'
-          memory: '300MB'
+          memory: '240MB'
   api01:
     container_name: rinha-api01
     build: 
@@ -29,7 +29,7 @@ services:
       resources:
         limits:
           cpus: '0.20'
-          memory: '50MB'
+          memory: '90MB'
   api02:
     container_name: rinha-api02
     build: 
@@ -42,7 +42,7 @@ services:
       resources:
         limits:
           cpus: '0.20'
-          memory: '50MB'
+          memory: '90MB'
   nginx:
     image: nginx:latest
     volumes:
