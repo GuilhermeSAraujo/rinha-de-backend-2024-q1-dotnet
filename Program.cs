@@ -2,15 +2,17 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
-using rinha_de_backend_2024_q1_dotnet;
+using rinha_de_backend_2024_q1_dotnet.Pools;
 using rinha_de_backend_2024_q1_dotnet.Types;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("prd");
 //var connectionString = builder.Configuration.GetConnectionString("local");
 
-builder.Services.AddSingleton<InsertTransactionPool>();
+builder.Services.AddSingleton<CreditTransactionPool>();
+builder.Services.AddSingleton<DebitTransactionPool>();
 builder.Services.AddSingleton<BalanceSatementPool>();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -22,54 +24,79 @@ var app = builder.Build();
 app.MapPost("/clientes/{id}/transacoes", async Task<Results<Ok<PostTransactionResult>, NotFound, UnprocessableEntity>> (
     [FromRoute] int id,
     [FromBody] TransactionRequest request,
-    InsertTransactionPool insertTransactionPool) =>
+    DebitTransactionPool debitTransactionPool,
+    CreditTransactionPool creditTransactionPool) =>
 {
     if (id is (< 1 or > 5))
+    {
         return TypedResults.NotFound();
+    }
 
     if (string.IsNullOrEmpty(request.Descricao) || request.Descricao.Length > 10)
+    {
         return TypedResults.UnprocessableEntity();
+    }
 
     if (request.Tipo != 'c' && request.Tipo != 'd')
+    {
         return TypedResults.UnprocessableEntity();
+    }
 
-    if (request.Valor <= 0 || request.Valor % 2 != 0) 
+    if (request.Valor <= 0 || request.Valor % 1 != 0)
+    {
         return TypedResults.UnprocessableEntity();
+    }
 
     var result = new PostTransactionResult(0, 0);
 
-    var transactionCmd = insertTransactionPool.GetCommand();
+    NpgsqlCommand command = null;
 
-    transactionCmd.Parameters[0].Value = request.Tipo == 'c' ? request.Valor * -1 : request.Valor;
-    transactionCmd.Parameters[1].Value = id;
-    transactionCmd.Parameters[2].Value = request.Tipo;
-    transactionCmd.Parameters[3].Value = request.Descricao;
-
-    using var connection = new NpgsqlConnection(connectionString);
-    await connection.OpenAsync();
-
-    transactionCmd.Connection = connection;
-
-    using var reader = await transactionCmd.ExecuteReaderAsync();
-
-    while (await reader.ReadAsync())
+    try
     {
-        if (reader.GetBoolean(2) is false)
-            return TypedResults.UnprocessableEntity();
 
-        result.Saldo = reader.GetInt32(0);
-        result.Limite = reader.GetInt32(1);
+        if (request.Tipo == 'd')
+            command = debitTransactionPool.GetCommand();
+        else
+            command = creditTransactionPool.GetCommand();
+
+        command.Parameters[0].Value = (int)request.Valor;
+        command.Parameters[1].Value = id;
+        command.Parameters[2].Value = request.Descricao;
+
+        using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+
+        command.Connection = connection;
+
+        using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            if (reader.GetBoolean(2) is false)
+            {
+                return TypedResults.UnprocessableEntity();
+            }
+
+            result.Saldo = reader.GetInt32(0);
+            result.Limite = reader.GetInt32(1);
+        }
     }
+    finally
+    {
+        command.Connection = null;
 
-    insertTransactionPool.ReturnCommand(transactionCmd);
-
+        if (request.Tipo == 'd')
+            debitTransactionPool.ReturnCommand(command);
+        else
+            creditTransactionPool.ReturnCommand(command);
+    }
     return TypedResults.Ok(result);
 });
 
-app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, BalanceSatementPool statementPool) =>
+app.MapGet("/clientes/{id}/extrato", async Task<Results<Ok<BalanceStatementJson>, NotFound, UnprocessableEntity>> ([FromRoute] int id, BalanceSatementPool statementPool) =>
 {
     if (id is (< 1 or > 5))
-        return Results.NotFound(new { error = "Id not found" });
+        return TypedResults.NotFound();
 
     var commands = statementPool.GetCommand();
 
@@ -87,10 +114,13 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, BalanceSatementP
     {
         if (!readerCustomer.HasRows)
         {
-            await connection.CloseAsync();
-            await connection.DisposeAsync();
+            //await connection.CloseAsync();
+            //await connection.DisposeAsync();
             await readerCustomer.CloseAsync();
             await readerCustomer.DisposeAsync();
+            selectCustomerCommand.Connection = null;
+            statementPool.ReturnCommand(commands);
+
             return TypedResults.NotFound();
         }
 
@@ -127,6 +157,8 @@ app.MapGet("/clientes/{id}/extrato", async ([FromRoute] int id, BalanceSatementP
         }
     }
 
+    selectCustomerCommand.Connection = null;
+    selectTransactionsCommand.Connection = null;
     statementPool.ReturnCommand(commands);
 
     return TypedResults.Ok(new BalanceStatementJson(balanceStatementResult, transactions));
