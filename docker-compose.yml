@@ -15,12 +15,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.8'
-          memory: '240MB'
+          cpus: '0.4'
+          memory: '200MB'
   api01:
     container_name: rinha-api01
-    build: 
-        context: .
+    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
     depends_on:
       - db
     environment:
@@ -28,12 +27,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.20'
-          memory: '90MB'
+          cpus: '0.4'
+          memory: '97MB'
   api02:
     container_name: rinha-api02
-    build: 
-        context: .
+    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
     depends_on:
       - db
     environment:
@@ -41,8 +39,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.20'
-          memory: '90MB'
+          cpus: '0.4'
+          memory: '97MB'
   nginx:
     image: nginx:latest
     volumes:
@@ -56,7 +54,7 @@ services:
       resources:
         limits:
           cpus: '0.3'
-          memory: '150MB'
+          memory: '155MB'
 networks:
   default:
     driver: bridge
