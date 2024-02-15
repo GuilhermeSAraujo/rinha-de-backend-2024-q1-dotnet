@@ -36,11 +36,11 @@ CREATE INDEX idx_transaction_customer_id ON transacao(id_cliente);
 
 INSERT INTO cliente (limite, saldo)
 VALUES
-    (1000 * 100, 1000 * 100),
-    (800 * 100, 800 * 100),
-    (10000 * 100, 10000 * 100),
-    (100000 * 100, 100000 * 100),
-    (5000 * 100, 5000 * 100);
+    (1000 * 100, 0),
+    (800 * 100, 0),
+    (10000 * 100, 0),
+    (100000 * 100, 0),
+    (5000 * 100, 0);
 
 
 CREATE TYPE saldo_limite AS (
@@ -49,23 +49,42 @@ CREATE TYPE saldo_limite AS (
     success bool
 );
 
-CREATE OR REPLACE FUNCTION criar_transacao(valor INTEGER, id_cliente int4, tipo char, descricao varchar(10))
+CREATE OR REPLACE FUNCTION criar_transacao_debito(valor INTEGER, id_cliente int4, descricao varchar(10))
 RETURNS saldo_limite
 LANGUAGE plpgsql 
 AS $$
 DECLARE
     result saldo_limite;
 BEGIN
-   UPDATE cliente SET saldo = saldo + (-valor) WHERE id = id_cliente AND saldo - valor >= 0
+   UPDATE cliente SET saldo = saldo - valor WHERE id = id_cliente AND saldo - valor >= limite * (-1)
    RETURNING saldo, limite INTO result.saldo_cliente, result.limite_cliente;
    
-   IF result.saldo_cliente > 0 then
+   IF result.saldo_cliente >= result.limite_cliente * (-1) then
    		result.success := true;
 		INSERT INTO transacao (valor, tipo, descricao,  id_cliente)
-		VALUES(valor, tipo, descricao, id_cliente);
+		VALUES(valor, 'd', descricao, id_cliente);
 	else
 		result.success := false;
    END IF;
+   
+   RETURN result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION criar_transacao_credito(valor INTEGER, id_cliente int4, descricao varchar(10))
+RETURNS saldo_limite
+LANGUAGE plpgsql 
+AS $$
+DECLARE
+    result saldo_limite;
+BEGIN
+   UPDATE cliente SET saldo = saldo + valor WHERE id = id_cliente
+   RETURNING saldo, limite INTO result.saldo_cliente, result.limite_cliente;
+
+   result.success := true;
+   
+   INSERT INTO transacao (valor, tipo, descricao,  id_cliente)
+   VALUES(valor, 'c', descricao, id_cliente);
    
    RETURN result;
 END;
