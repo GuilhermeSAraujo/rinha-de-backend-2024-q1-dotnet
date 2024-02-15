@@ -4,9 +4,13 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using rinha_de_backend_2024_q1_dotnet.Pools;
 using rinha_de_backend_2024_q1_dotnet.Types;
-using System.Diagnostics;
 
 var builder = WebApplication.CreateSlimBuilder(args);
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
+});
 
 var connectionString = builder.Configuration.GetConnectionString("prd");
 //var connectionString = builder.Configuration.GetConnectionString("local");
