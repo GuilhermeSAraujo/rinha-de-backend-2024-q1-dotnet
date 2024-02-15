@@ -114,8 +114,6 @@ app.MapGet("/clientes/{id}/extrato", async Task<Results<Ok<BalanceStatementJson>
     {
         if (!readerCustomer.HasRows)
         {
-            //await connection.CloseAsync();
-            //await connection.DisposeAsync();
             await readerCustomer.CloseAsync();
             await readerCustomer.DisposeAsync();
             selectCustomerCommand.Connection = null;
