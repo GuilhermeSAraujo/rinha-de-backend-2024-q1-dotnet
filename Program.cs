@@ -12,8 +12,8 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
 });
 
-var connectionString = builder.Configuration.GetConnectionString("prd");
-//var connectionString = builder.Configuration.GetConnectionString("local");
+//var connectionString = builder.Configuration.GetConnectionString("prd");
+var connectionString = builder.Configuration.GetConnectionString("local");
 
 builder.Services.AddSingleton<CreditTransactionPool>();
 builder.Services.AddSingleton<DebitTransactionPool>();

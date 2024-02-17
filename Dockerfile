@@ -6,10 +6,7 @@ RUN apk add --no-cache \
     libstdc++ libintl \
     icu
 
-EXPOSE 8080
-
-# Copy 
 WORKDIR /app
 COPY ./publish ./
 
-ENTRYPOINT ["./rinha-de-backend-2024-q1-dotnet", "--urls", "http://0.0.0.0:8080"]
+ENTRYPOINT ["./rinha-de-backend-2024-q1-dotnet"]

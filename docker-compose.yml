@@ -12,6 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - ./ddl.sql:/docker-entrypoint-initdb.d/ddl.sql
+    network_mode: host
     deploy:
       resources:
         limits:
@@ -23,7 +24,8 @@ services:
     depends_on:
       - db
     environment:
-      - ASPNETCORE_HTTP_PORTS=8080
+      - ASPNETCORE_URLS=http://*:8080
+    network_mode: host
     deploy:
       resources:
         limits:
@@ -35,7 +37,8 @@ services:
     depends_on:
       - db
     environment:
-      - ASPNETCORE_HTTP_PORTS=8080
+      - ASPNETCORE_URLS=http://*:8081
+    network_mode: host
     deploy:
       resources:
         limits:
@@ -50,12 +53,9 @@ services:
       - api02
     ports:
       - "9999:9999"
+    network_mode: host
     deploy:
       resources:
         limits:
           cpus: '0.3'
           memory: '100MB'
-networks:
-  default:
-    driver: bridge
-    name: rinha
