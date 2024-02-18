@@ -25,6 +25,15 @@ builder.Services.AddRequestTimeouts(options => options.DefaultPolicy = new Reque
 
 var app = builder.Build();
 
+var creditTransactionPool = app.Services.GetRequiredService<CreditTransactionPool>();
+var debitTransactionPool = app.Services.GetRequiredService<DebitTransactionPool>();
+var balanceSatementPool = app.Services.GetRequiredService<BalanceSatementPool>();
+
+var fillCreditTransactionPoolTask = Task.Run(() => creditTransactionPool.FillPool());
+var fillDebitTransactionPoolTask = Task.Run(() => debitTransactionPool.FillPool());
+var fillBalanceSatementPoolTask = Task.Run(() => balanceSatementPool.FillPool());
+await Task.WhenAll(fillCreditTransactionPoolTask, fillDebitTransactionPoolTask, fillBalanceSatementPoolTask);
+
 app.MapPost("/clientes/{id}/transacoes", async Task<Results<Ok<PostTransactionResult>, NotFound, UnprocessableEntity>> (
     [FromRoute] int id,
     [FromBody] TransactionRequest request,

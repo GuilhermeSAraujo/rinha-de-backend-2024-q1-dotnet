@@ -20,7 +20,9 @@ services:
           memory: '220MB'
   api01:
     container_name: rinha-api01
-    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    # image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    build: 
+        context: .
     depends_on:
       - db
     environment:
@@ -33,7 +35,9 @@ services:
           memory: '115MB'
   api02:
     container_name: rinha-api02
-    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    # image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    build:
+        context: .
     depends_on:
       - db
     environment:

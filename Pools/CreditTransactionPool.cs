@@ -4,19 +4,14 @@ using System.Collections.Concurrent;
 
 namespace rinha_de_backend_2024_q1_dotnet.Pools;
 
-public class DebitTransactionPool
+public class CreditTransactionPool
 {
     private readonly ConcurrentQueue<NpgsqlCommand> _pool;
-    private const int POOL_SIZE = 3000;
-
-    public DebitTransactionPool()
-    {
-        _pool = FillPool();
-    }
+    private const int POOL_SIZE = 4000;
 
     public ConcurrentQueue<NpgsqlCommand> FillPool()
     {
-        Console.WriteLine("Starting to fill pool");
+        Console.WriteLine("Starting to fill CreditTransactionPool pool");
 
         var pool = new ConcurrentQueue<NpgsqlCommand>();
         for (int i = 0; i < POOL_SIZE; i++)
@@ -31,7 +26,7 @@ public class DebitTransactionPool
 
     public NpgsqlCommand Create()
     {
-        var cmd = new NpgsqlCommand("select * from criar_transacao_debito($1, $2, $3)");
+        var cmd = new NpgsqlCommand("select * from criar_transacao_credito($1, $2, $3)");
         cmd.Parameters.Add(new NpgsqlParameter<int>() { NpgsqlDbType = NpgsqlDbType.Integer });
         cmd.Parameters.Add(new NpgsqlParameter<int>() { NpgsqlDbType = NpgsqlDbType.Integer });
         cmd.Parameters.Add(new NpgsqlParameter<string>() { NpgsqlDbType = NpgsqlDbType.Varchar });

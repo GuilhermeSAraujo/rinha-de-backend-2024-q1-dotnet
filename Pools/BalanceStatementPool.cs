@@ -9,11 +9,6 @@ public class BalanceSatementPool
     private readonly ConcurrentQueue<Dictionary<string, NpgsqlCommand>> _pool;
     private const int POOL_SIZE = 300;
 
-    public BalanceSatementPool()
-    {
-        _pool = FillPool();
-    }
-
     public ConcurrentQueue<Dictionary<string, NpgsqlCommand>> FillPool()
     {
         var pool = new ConcurrentQueue<Dictionary<string, NpgsqlCommand>>();
