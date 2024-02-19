@@ -9,6 +9,12 @@ public class DebitTransactionPool
     private readonly ConcurrentQueue<NpgsqlCommand> _pool;
     private const int POOL_SIZE = 2000;
 
+    public DebitTransactionPool()
+    {
+        _pool = FillPool();
+    }
+
+
     public ConcurrentQueue<NpgsqlCommand> FillPool()
     {
         Console.WriteLine("Starting to fill DebitTransactionPool pool");

@@ -9,6 +9,11 @@ public class CreditTransactionPool
     private readonly ConcurrentQueue<NpgsqlCommand> _pool;
     private const int POOL_SIZE = 4000;
 
+    public CreditTransactionPool()
+    {
+        _pool = FillPool();
+    }
+
     public ConcurrentQueue<NpgsqlCommand> FillPool()
     {
         Console.WriteLine("Starting to fill CreditTransactionPool pool");

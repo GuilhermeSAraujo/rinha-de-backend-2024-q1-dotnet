@@ -12,12 +12,18 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default);
 });
 
+
+//network mode: bridge
 //var connectionString = builder.Configuration.GetConnectionString("prd");
+
+// Use when running locally or 'netowork mode: local' on docker
 var connectionString = builder.Configuration.GetConnectionString("local");
 
 builder.Services.AddSingleton<CreditTransactionPool>();
 builder.Services.AddSingleton<DebitTransactionPool>();
 builder.Services.AddSingleton<BalanceSatementPool>();
+
+builder.Services.AddSingleton<IHostedService, PoolStartupService>();
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -25,26 +31,12 @@ builder.Services.AddRequestTimeouts(options => options.DefaultPolicy = new Reque
 
 var app = builder.Build();
 
-var creditTransactionPool = app.Services.GetRequiredService<CreditTransactionPool>();
-var debitTransactionPool = app.Services.GetRequiredService<DebitTransactionPool>();
-var balanceSatementPool = app.Services.GetRequiredService<BalanceSatementPool>();
-
-var fillCreditTransactionPoolTask = Task.Run(() => creditTransactionPool.FillPool());
-var fillDebitTransactionPoolTask = Task.Run(() => debitTransactionPool.FillPool());
-var fillBalanceSatementPoolTask = Task.Run(() => balanceSatementPool.FillPool());
-await Task.WhenAll(fillCreditTransactionPoolTask, fillDebitTransactionPoolTask, fillBalanceSatementPoolTask);
-
 app.MapPost("/clientes/{id}/transacoes", async Task<Results<Ok<PostTransactionResult>, NotFound, UnprocessableEntity>> (
     [FromRoute] int id,
     [FromBody] TransactionRequest request,
     DebitTransactionPool debitTransactionPool,
     CreditTransactionPool creditTransactionPool) =>
 {
-    if (id is (< 1 or > 5))
-    {
-        return TypedResults.NotFound();
-    }
-
     if (string.IsNullOrEmpty(request.Descricao) || request.Descricao.Length > 10)
     {
         return TypedResults.UnprocessableEntity();
@@ -104,13 +96,20 @@ app.MapPost("/clientes/{id}/transacoes", async Task<Results<Ok<PostTransactionRe
             creditTransactionPool.ReturnCommand(command);
     }
     return TypedResults.Ok(result);
+}).AddEndpointFilter(async (ctx, next) =>
+{
+    var path = ctx.HttpContext.Request.Path;
+    var segments = path.Value?.Split('/');
+
+    // segments[1] believe your dreams
+    if (segments?.Length == 0 || !(int.TryParse(segments?[1], out int digit) || digit < 1 || digit > 5))
+        return TypedResults.NotFound();
+
+    return await next(ctx);
 });
 
 app.MapGet("/clientes/{id}/extrato", async Task<Results<Ok<BalanceStatementJson>, NotFound, UnprocessableEntity>> ([FromRoute] int id, BalanceSatementPool statementPool) =>
 {
-    if (id is (< 1 or > 5))
-        return TypedResults.NotFound();
-
     var commands = statementPool.GetCommand();
 
     commands.TryGetValue("selectCustomer", out NpgsqlCommand? selectCustomerCommand);
@@ -173,6 +172,18 @@ app.MapGet("/clientes/{id}/extrato", async Task<Results<Ok<BalanceStatementJson>
     statementPool.ReturnCommand(commands);
 
     return TypedResults.Ok(new BalanceStatementJson(balanceStatementResult, transactions));
-});
+}).AddEndpointFilter(async (ctx, next) =>
+   {
+       var path = ctx.HttpContext.Request.Path;
+       var segments = path.Value?.Split('/');
+
+       // segments[1] believe your dreams
+       if (segments?.Length == 0 || !(int.TryParse(segments?[1], out int digit) || digit < 1 || digit > 5))
+       {
+           return TypedResults.NotFound();
+       }
+
+       return await next(ctx);
+   });
 
 app.Run();
