@@ -14,10 +14,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 
 //network mode: bridge
-//var connectionString = builder.Configuration.GetConnectionString("prd");
+var connectionString = builder.Configuration.GetConnectionString("prd");
 
 // Use when running locally or 'netowork mode: local' on docker
-var connectionString = builder.Configuration.GetConnectionString("local");
+// var connectionString = builder.Configuration.GetConnectionString("local");
 
 builder.Services.AddSingleton<CreditTransactionPool>();
 builder.Services.AddSingleton<DebitTransactionPool>();

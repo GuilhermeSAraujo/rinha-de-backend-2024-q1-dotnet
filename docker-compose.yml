@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - ./ddl.sql:/docker-entrypoint-initdb.d/ddl.sql
-    network_mode: host
+    # network_mode: host
     deploy:
       resources:
         limits:
@@ -20,12 +20,14 @@ services:
           memory: '220MB'
   api01:
     container_name: rinha-api01
-    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    # image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    build:
+      context: .
     depends_on:
       - db
     environment:
       - ASPNETCORE_URLS=http://*:8080
-    network_mode: host
+    # network_mode: host
     deploy:
       resources:
         limits:
@@ -33,12 +35,14 @@ services:
           memory: '115MB'
   api02:
     container_name: rinha-api02
-    image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    # image: guilhermesouzaaraujo/rinha-api-2024-q1:latest
+    build:
+      context: .
     depends_on:
       - db
     environment:
       - ASPNETCORE_URLS=http://*:8081
-    network_mode: host
+    # network_mode: host
     deploy:
       resources:
         limits:
@@ -53,9 +57,13 @@ services:
       - api02
     ports:
       - "9999:9999"
-    network_mode: host
+    # network_mode: host
     deploy:
       resources:
         limits:
           cpus: '0.3'
           memory: '100MB'
+networks:
+  default:
+    driver: bridge
+    name: rinha
